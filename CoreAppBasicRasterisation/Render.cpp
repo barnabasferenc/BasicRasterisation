@@ -78,7 +78,7 @@ void Render::TransformVertices(Mesh* mesh)
 // Function to check if a point is inside the clipping plane
 static bool isInside(const Vertex & point, const std::array<float, 4>&plane)
 {
-    return plane[0] * point.position.x + plane[1] * point.position.y + plane[2] * point.position.z + plane[3] >= 0;
+    return plane[0] * point.position.x + plane[1] * point.position.y + plane[2] * point.position.z + plane[3] >= 0;  // Ax * By * Cz + D >=0
 }
 
 // Function to compute the intersection of a line segment with a clipping plane
@@ -86,8 +86,8 @@ static Vertex intersect(const Vertex & p1, const Vertex & p2, const std::array<f
 {
     Vertex v{};
     
-    float d1 = plane[0] * p1.position.x + plane[1] * p1.position.y + plane[2] * p1.position.z + plane[3];  // dot(p1.position, plane)
-    float d2 = plane[0] * p2.position.x + plane[1] * p2.position.y + plane[2] * p2.position.z + plane[3]; // dot(p2.position, plane)
+    float d1 = plane[0] * p1.position.x + plane[1] * p1.position.y + plane[2] * p1.position.z + plane[3];  // dot3(p1.position, plane)
+    float d2 = plane[0] * p2.position.x + plane[1] * p2.position.y + plane[2] * p2.position.z + plane[3]; // dot3(p2.position, plane)
     float t = d1 / (d1 - d2);
 
     //intersect all triangle`s attributes
@@ -626,12 +626,12 @@ void Render::DrawMesh(Mesh* mesh)
 
             // compute triangle`s bounding box
             // be careful xmin/xmax/ymin/ymax can be negative. Don't cast to uint32_t
-            uint32_t x0 = max(int32_t(0), (int32_t)(std::floor(xmin)));
-            uint32_t x1 = min(int32_t(ImageWidth) - 1, (int32_t)(std::floor(xmax)));
-            //uint32_t dx1x0 = x1 - x0; // BBox width
-            uint32_t y0 = max(int32_t(0), (int32_t)(std::floor(ymin)));
-            uint32_t y1 = min(int32_t(ImageHeight) - 1, (int32_t)(std::floor(ymax)));
-            //uint32_t dy1y0 = y1 - y0; // BBox height
+            uint32_t bb_xmin = max(int32_t(0), (int32_t)(std::floor(xmin)));
+            uint32_t bb_xmax = min(int32_t(ImageWidth) - 1, (int32_t)(std::floor(xmax)));
+            //uint32_t bb_width = bb_xmax - bb_xmin; // BBox width
+            uint32_t bb_ymin = max(int32_t(0), (int32_t)(std::floor(ymin)));
+            uint32_t bb_ymax = min(int32_t(ImageHeight) - 1, (int32_t)(std::floor(ymax)));
+            //uint32_t bb_height = bb_ymax - bb_ymin; // BBox height
 
             // calculate triangle`s area with scalar values
             //float area = (v2Raster.x - v0Raster.x) * (v1Raster.y - v0Raster.y) - (v2Raster.y - v0Raster.y) * (v1Raster.x - v0Raster.x); //compute triangle`s area
@@ -668,7 +668,7 @@ void Render::DrawMesh(Mesh* mesh)
 
 
             //calculate edge equation (the determinant) (use right-handed coordinate system!)
-            XMVECTOR PxPyPz = XMVectorSet(x0 + 0.5f, y0 + 0.5f, 0.0f, 0.0f);
+            XMVECTOR PxPyPz = XMVectorSet(bb_xmin + 0.5f, bb_ymin + 0.5f, 0.0f, 0.0f);
             //create edge equation`s vectorized version
             XMVECTOR PxPxPx_0 = _mm_insert_ps(_mm_permute_ps(PxPyPz, _MM_SHUFFLE(0, 0, 0, 0)), zero_vector, _MM_MK_INSERTPS_NDX(0, 3, 0)); //_MM_PERM_AAAA = xxxx
             XMVECTOR PyPyPy_0 = _mm_insert_ps(_mm_permute_ps(PxPyPz, _MM_SHUFFLE(1, 1, 1, 1)), zero_vector, _MM_MK_INSERTPS_NDX(0, 3, 0)); //_MM_PERM_BBBB = yyyy
@@ -708,11 +708,11 @@ void Render::DrawMesh(Mesh* mesh)
             // [comment]
             // check the triangle`s bounding area only, render this area of the screen
             // [/comment]
-            for (uint32_t y = y0; y <= y1; y++)
+            for (uint32_t y = bb_ymin; y <= bb_ymax; y++)
             {
                 //float w0 = w_0 , w1 = w_1 , w2 = w_2;
                 XMVECTOR w0_w1_w2 = w_0_w_1_w_2;
-                for (uint32_t x = x0; x <= x1; x++)
+                for (uint32_t x = bb_xmin; x <= bb_xmax; x++)
                 {
 
                     //XMFLOAT3 P(x + 0.5, y + 0.5, 0);
@@ -746,7 +746,8 @@ void Render::DrawMesh(Mesh* mesh)
                      /* w0 >= 0 && w1 >= 0 && w2 >= 0 */ /*((int)w0 | (int)w1 | (int)w2) >= 0*/
 
                     int mask = _mm_movemask_ps(w0_w1_w2); // check the sign bit of the weights (edge equation values) and if they are zero, than the pixel is part of the triangle
-                    if ((mask & 7) == 0)
+                    //!!! if only the first conditional statement is used below then only front-facing triangles will be drawn, otherwise both front- and back-facing triangles will be drawn!
+                    if ((mask & 7) == 0 || (mask & 7) == 7) //front and back
                     {
 
                         //compute the barycentric coordinates
@@ -849,7 +850,7 @@ void Render::DrawMesh(Mesh* mesh)
                         }
 
                     }
-                    //edge equation: E(X, Y) = (x - X) * dY - (y - Y) * dX   
+                    //edge equation: E(X, Y) = (px - X) * dY - (py - Y) * dX     p(x,y) = pixel position inside the bounding-box
                     //inner-loop  , step to the next pixel in the current row
                     // calculate the determinant (edge-equation) incrementally for all pixels within the bounding-box
                     //incremental equation (x-axis): E(X + 1, Y) = E(X, Y) + dY
