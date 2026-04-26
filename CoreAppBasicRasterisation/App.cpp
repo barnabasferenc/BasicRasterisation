@@ -153,7 +153,7 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView>
             m_Render->RenderMain(&ms);
             renderTime = L"Render time :  ";
             renderTime += std::to_wstring(ms); //1 frame rendered ms milliseconds
-            renderTime += L" ms , " + std::to_wstring(1000.0f/ms) + L" fps";
+            renderTime += L" ms , " + std::to_wstring(uint16_t(1000.0f/ms)) + L" fps";
                       
             m_bitmapRasterized.detach();            
              check_hresult(
@@ -210,7 +210,7 @@ struct App : implements<App, IFrameworkViewSource, IFrameworkView>
                    
                     renderTime = L"Render time :  ";
                     renderTime += std::to_wstring(ms);
-                    renderTime += L" ms , " + std::to_wstring(1000.0f / ms) + L" fps";
+                    renderTime += L" ms , " + std::to_wstring(uint16_t(1000.0f / ms)) + L" fps";
 
                     // create a bitmap from rendered image
                     check_hresult(
